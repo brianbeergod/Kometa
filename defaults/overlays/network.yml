@@ -739,7 +739,11 @@ overlays:
 
   Paramount+:
     variables: { weight: 10}
-    template: [name: standard, {name: networks, search: [Paramount+, Paramount+ with Showtime]}]
+    template: [name: standard, name: networks]
+
+  Paramount+ with Showtime:
+    variables: { weight: 10}
+    template: [name: standard, name: networks]
 
   PBS:
     variables: { weight: 10}
