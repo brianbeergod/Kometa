@@ -1,4 +1,4 @@
-import os, re
+import os, re, json, hashlib
 from datetime import datetime
 from modules import plex, util, overlay
 from modules.builder import CollectionBuilder
@@ -24,6 +24,22 @@ class Overlays:
         logger.info("")
         os.makedirs(self.library.overlay_backup, exist_ok=True)
 
+        config_data = {
+            "files": [of.overlays for of in self.library.overlay_files],
+            "settings": {
+                "artwork_filetype": self.library.overlay_artwork_filetype,
+                "artwork_quality": self.library.overlay_artwork_quality,
+                "remove_overlays": self.library.remove_overlays,
+                "reapply_overlays": self.library.reapply_overlays,
+                "reset_overlays": self.library.reset_overlays,
+            },
+        }
+        overlay_hash = hashlib.md5(json.dumps(config_data, sort_keys=True).encode("utf-8")).hexdigest()
+        if self.cache:
+            if self.cache.get_overlay_config_hash() != overlay_hash:
+                self.cache.reset_overlay_cache()
+                self.cache.set_overlay_config_hash(overlay_hash)
+
         key_to_overlays = {}
         properties = {}
         if not self.library.remove_overlays:
@@ -46,6 +62,8 @@ class Overlays:
                         self.remove_overlay(item, item_title, old_overlay.title, [
                             os.path.join(self.library.overlay_folder, old_overlay.title[:-8], f"{item.ratingKey}.png")
                         ])
+                        if self.cache:
+                            self.cache.remove_item_overlay(item.ratingKey)
             logger.info("")
 
         remove_overlays = self.get_overlay_items(ignore=ignore_list)
@@ -65,6 +83,8 @@ class Overlays:
                     os.path.join(self.library.overlay_backup, f"{item.ratingKey}.jpg"),
                     os.path.join(self.library.overlay_backup, f"{item.ratingKey}.webp")
                 ])
+                if self.cache:
+                    self.cache.remove_item_overlay(item.ratingKey)
             logger.exorcise()
         else:
             logger.separator(f"No Overlays to Remove for the {self.library.name} Library")
@@ -85,6 +105,9 @@ class Overlays:
             for i, (over_key, (item, over_names)) in enumerate(sorted(key_to_overlays.items(), key=lambda io: self.library.get_item_display_title(io[1][0], sort=True)), 1):
                 item_title = self.library.get_item_display_title(item)
                 try:
+                    if self.cache and self.cache.item_overlayed(item.ratingKey, overlay_hash):
+                        logger.info(f"Skipping {item_title}: cached")
+                        continue
                     logger.ghost(f"Overlaying: {i}/{len(key_to_overlays)} {item_title}")
                     image_compare = None
                     overlay_compare = None
@@ -548,6 +571,8 @@ class Overlays:
 
                     if self.cache and poster_compare:
                         self.cache.update_image_map(item.ratingKey, f"{self.library.image_table_name}_overlays", item.thumb, poster_compare, overlay='|'.join(compare_names))
+                    if self.cache:
+                        self.cache.update_item_overlay(item.ratingKey, overlay_hash)
                 except Failed as e:
                     logger.error(f"  {e}\n  Overlays Attempted on {item_title}: {', '.join(over_names)}")
                 except Exception as e:
