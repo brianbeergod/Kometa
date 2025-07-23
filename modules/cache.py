@@ -332,6 +332,16 @@ class Cache:
                                 self.update_image_map(row["rating_key"], final_table, row["location"], row["compare"], overlay=row["overlay"])
                     cursor.execute("DROP TABLE IF EXISTS image_map")
 
+        self.overlay_cache_path = f"{os.path.splitext(config_path)[0]}.overlay_cache.json"
+        if os.path.exists(self.overlay_cache_path):
+            try:
+                with open(self.overlay_cache_path, "r", encoding="utf-8") as f:
+                    self.overlay_cache = json.load(f)
+            except Exception:
+                self.overlay_cache = {"config_hash": None, "items": {}}
+        else:
+            self.overlay_cache = {"config_hash": None, "items": {}}
+
     def query_guid_map(self, plex_guid):
         id_to_return = None
         imdb_id = None
@@ -1128,3 +1138,32 @@ class Cache:
                 cursor.execute(f"INSERT OR IGNORE INTO testing(name) VALUES(?)", (name,))
                 sql = f"UPDATE testing SET value1 = ?, value2 = ?, success = ? WHERE name = ?"
                 cursor.execute(sql, (value1, value2, success, name))
+
+    def save_overlay_cache(self):
+        with open(self.overlay_cache_path, "w", encoding="utf-8") as f:
+            json.dump(self.overlay_cache, f)
+
+    def reset_overlay_cache(self):
+        self.overlay_cache = {"config_hash": None, "items": {}}
+        self.save_overlay_cache()
+
+    def get_overlay_config_hash(self):
+        return self.overlay_cache.get("config_hash")
+
+    def set_overlay_config_hash(self, config_hash):
+        self.overlay_cache["config_hash"] = config_hash
+        self.save_overlay_cache()
+
+    def item_overlayed(self, rating_key, config_hash=None):
+        if config_hash is None:
+            config_hash = self.get_overlay_config_hash()
+        return str(rating_key) in self.overlay_cache.get("items", {}) and self.overlay_cache["items"][str(rating_key)] == config_hash
+
+    def update_item_overlay(self, rating_key, config_hash):
+        self.overlay_cache.setdefault("items", {})[str(rating_key)] = config_hash
+        self.save_overlay_cache()
+
+    def remove_item_overlay(self, rating_key):
+        if "items" in self.overlay_cache and str(rating_key) in self.overlay_cache["items"]:
+            del self.overlay_cache["items"][str(rating_key)]
+            self.save_overlay_cache()
